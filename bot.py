@@ -1,5 +1,3 @@
-
-
 import asyncio
 import logging
 import os
@@ -17,6 +15,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
+    FSInputFile,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -32,6 +31,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "")
 DB_PATH = os.getenv("DB_PATH", "bot.db")
+BANNER_PATH = os.path.join(os.path.dirname(__file__), "gamepay_hub_banner.png")
 ROLECHECK_URL = "https://www.gameshopbot.online/mlbb_checkrole-main/api/games/mlbb_checkrole"
 
 PRODUCT_NAME = "Weekly Pass"
@@ -213,13 +213,19 @@ async def start(message: Message, state: FSMContext):
         "အောက်က card menu မှာ လိုချင်တဲ့ service ကိုရွေးပါ။",
         "🎮",
     )
+    if os.path.exists(BANNER_PATH):
+        await message.answer_photo(
+            FSInputFile(BANNER_PATH),
+            caption="GamePay Hub\nSupporting Education\nStudent discounts available",
+        )
     await message.answer(welcome_text, entities=welcome_entities, reply_markup=welcome_keyboard())
 
 
 @router.callback_query(F.data == "go_start")
 async def go_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await start(callback.message, state)
+    await state.clear()
+    await callback.message.edit_reply_markup(reply_markup=main_keyboard())
 
 
 @router.callback_query(F.data == "menu_products")
@@ -608,4 +614,5 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
