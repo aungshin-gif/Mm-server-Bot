@@ -1,4 +1,5 @@
 
+
 import asyncio
 import logging
 import os
@@ -47,6 +48,16 @@ CUSTOM_EMOJIS = {
     "diamond": "5427168083074628963",
     "kbzpay": "6217312653879024991",
     "welcome": "5409109841538994759",
+    "order_info": "5397916757333654639",
+    "amount": "5402186569006210455",
+    "region_result": "5206607081334906820",
+    "name": "5391112412445288650",
+    "fast_delivery": "5456140674028019486",
+    "stock": "5416081784641168838",
+    "secure_checkout": "5296369303661067030",
+    "catalogue": "5461117441612462242",
+    "feedback": "5253742260054409879",
+    "cancel": "5210952531676504517",
 }
 
 router = Router()
@@ -94,6 +105,7 @@ def init_db():
 
 def main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Start", callback_data="go_start", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
         [InlineKeyboardButton(text="Products", callback_data="menu_products", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["products"])],
         [InlineKeyboardButton(text="Region Check", callback_data="menu_region", style="success", icon_custom_emoji_id=CUSTOM_EMOJIS["region"])],
         [InlineKeyboardButton(text="Support", callback_data="menu_support", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
@@ -114,6 +126,12 @@ def product_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Weekly Pass • 6,000 Ks • Stock: 1", callback_data="buy_weekly", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["weekly_pass"])],
         [InlineKeyboardButton(text="Main Menu", callback_data="back_menu", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
+    ])
+
+
+def cancel_order_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Cancel Order", callback_data="cancel_order", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["cancel"])],
     ])
 
 
@@ -156,6 +174,25 @@ def custom_prefix(label: str, body: str, fallback: str):
     return f"{fallback} {body}", None
 
 
+def custom_lines(lines):
+    """Build plain text lines with one custom emoji entity at each line start."""
+    text_parts = []
+    entities = []
+    offset_units = 0
+    for label, body, fallback in lines:
+        prefix, _ = emoji_text(label, fallback)
+        line = f"{prefix} {body}"
+        text_parts.append(line)
+        entities.append(MessageEntity(
+            type="custom_emoji",
+            offset=offset_units,
+            length=1,
+            custom_emoji_id=CUSTOM_EMOJIS.get(label) or get_custom_emoji(label),
+        ))
+        offset_units += len((line + "\n").encode("utf-16-le")) // 2
+    return "\n".join(text_parts), entities
+
+
 @router.message(Command("start"))
 async def start(message: Message, state: FSMContext):
     await state.clear()
@@ -167,6 +204,12 @@ async def start(message: Message, state: FSMContext):
         "🎮",
     )
     await message.answer(welcome_text, entities=welcome_entities, reply_markup=main_keyboard())
+
+
+@router.callback_query(F.data == "go_start")
+async def go_start(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await start(callback.message, state)
 
 
 @router.callback_query(F.data == "menu_products")
@@ -184,17 +227,15 @@ async def back_menu(callback: CallbackQuery):
 @router.message(F.text == "Products")
 @router.message(Command("products"))
 async def products(message: Message):
-    product_text, product_entities = custom_prefix(
-        "products",
-        "<b>GAMEPAY HUB CATALOGUE</b>\n"
-        "━━━━━━━━━━━━━━━━\n\n"
-        "ဝယ်ယူလိုသော product ကို အောက်က card မှာရွေးပါ။\n\n"
-        "⚡ Fast delivery\n"
-        "🟢 Stock ရှိပါသည်\n"
-        "🔒 Secure checkout",
-        "📦",
-    )
-    await message.answer(product_text, entities=product_entities, reply_markup=product_keyboard())
+    product_text, product_entities = custom_lines([
+        ("catalogue", "GAMEPAY HUB CATALOGUE", "📦"),
+        ("products", "━━━━━━━━━━━━━━━━", "•"),
+        ("products", "ဝယ်ယူလိုသော product ကို အောက်က card မှာရွေးပါ။", "📦"),
+        ("fast_delivery", "Fast delivery", "⚡"),
+        ("stock", "Stock ရှိပါသည်", "🟢"),
+        ("secure_checkout", "Secure checkout", "🔒"),
+    ])
+    await message.answer(product_text, entities=product_entities, reply_markup=product_keyboard(), parse_mode=None)
 
 
 @router.callback_query(F.data == "buy_weekly")
@@ -229,17 +270,25 @@ async def receive_zone_id(message: Message, state: FSMContext):
     player_id = data["player_id"]
     await state.update_data(zone_id=zone)
     await state.set_state(UserFlow.waiting_payment_screenshot)
-    await message.answer(
-        f"Order အချက်အလက်\n\n"
-        f"Product: {PRODUCT_NAME}\n"
-        f"Player ID: {player_id}\n"
-        f"Zone ID: {zone}\n"
-        f"Amount: {PRODUCT_PRICE:,} Ks\n\n"
-        f"KBZPay ဖြင့် ငွေလွှဲရန်\n"
-        f"ဖုန်း: <code>{KBZPAY_NUMBER}</code>\n"
-        f"အမည်: <b>{escape(KBZPAY_NAME)}</b>\n\n"
-        "ငွေလွှဲပြီးပါက screenshot ကို ဒီ chat ထဲ ပို့ပါ။ Screenshot မပို့မချင်း order မစစ်ဆေးနိုင်ပါ။"
-    )
+    order_text, order_entities = custom_lines([
+        ("order_info", "Order အချက်အလက်", "🧾"),
+        ("weekly_pass", f"Product: {PRODUCT_NAME}", "💎"),
+        ("name", f"Player ID: {player_id}", "👤"),
+        ("region", f"Zone ID: {zone}", "🌍"),
+        ("amount", f"Amount: {PRODUCT_PRICE:,} Ks", "💰"),
+        ("kbzpay", "KBZPay ဖြင့် ငွေလွှဲရန်", "💳"),
+        ("kbzpay", f"ဖုန်း: {KBZPAY_NUMBER}", "📱"),
+        ("kbzpay", f"အမည်: {KBZPAY_NAME}", "👤"),
+        ("amount", "ငွေလွှဲပြီးပါက screenshot ကို ဒီ chat ထဲ ပို့ပါ။", "💰"),
+    ])
+    await message.answer(order_text, entities=order_entities, reply_markup=cancel_order_keyboard(), parse_mode=None)
+
+
+@router.callback_query(F.data == "cancel_order")
+async def cancel_order(callback: CallbackQuery, state: FSMContext):
+    await callback.answer("Order cancelled")
+    await state.clear()
+    await callback.message.answer("Order ကို cancel လုပ်ပြီးပါပြီ။", reply_markup=main_keyboard())
 
 
 @router.message(UserFlow.waiting_payment_screenshot, F.photo)
@@ -326,14 +375,15 @@ async def region_check(message: Message, state: FSMContext):
         stats = payload.get("data", {}).get("double_diamond_stats", {})
         region = player.get("region", "Unknown")
         region_display = "Myanmar (MM)" if str(region).upper() in {"MM", "MYANMAR"} else str(region)
-        await message.answer(
-            "✅ Region Check Result\n\n"
-            f"Name: <b>{escape(str(player.get('name', 'Unknown')))}</b>\n"
-            f"User ID: <code>{escape(str(player.get('id', player_id)))}</code>\n"
-            f"Zone ID: <code>{escape(str(player.get('zone', zone_id)))}</code>\n"
-            f"Region: <b>{escape(region_display)}</b>\n\n"
-            f"Double Diamond: {escape(str(stats.get('overall', 'Unknown')))}"
-        )
+        result_text, result_entities = custom_lines([
+            ("region_result", "Region Check Result", "✅"),
+            ("name", f"Name: {player.get('name', 'Unknown')}", "👤"),
+            ("name", f"User ID: {player.get('id', player_id)}", "🆔"),
+            ("region", f"Zone ID: {player.get('zone', zone_id)}", "🌍"),
+            ("region", f"Region: {region_display}", "🌍"),
+            ("checked", f"Double Diamond: {stats.get('overall', 'Unknown')}", "✅"),
+        ])
+        await message.answer(result_text, entities=result_entities, parse_mode=None)
     except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, RuntimeError):
         await message.answer("Region API ခဏမရနိုင်ပါ။ ခဏနားပြီး ပြန်စမ်းပါ။")
     finally:
@@ -358,10 +408,11 @@ async def support(message: Message):
 async def menu_feedback(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(UserFlow.waiting_feedback)
-    await callback.message.answer(
-        "✍️ Feedback ပို့ချင်တာကို ဒီ chat ထဲမှာ စာ၊ ပုံ သို့မဟုတ် video အဖြစ် ပို့ပါ။\n\n"
-        "သင့်အမည်နဲ့ Telegram ID ကို admin ဆီ အတူပို့ပေးပါမယ်။"
-    )
+    feedback_text, feedback_entities = custom_lines([
+        ("feedback", "Feedback ပို့ချင်တာကို ဒီ chat ထဲမှာ စာ၊ ပုံ သို့မဟုတ် video အဖြစ် ပို့ပါ။", "✍️"),
+        ("feedback", "သင့်အမည်နဲ့ Telegram ID ကို admin ဆီ အတူပို့ပေးပါမယ်။", "📩"),
+    ])
+    await callback.message.answer(feedback_text, entities=feedback_entities, parse_mode=None)
 
 
 @router.message(UserFlow.waiting_feedback)
