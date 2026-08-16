@@ -1,5 +1,3 @@
-
-
 import asyncio
 import logging
 import os
@@ -41,7 +39,6 @@ KBZPAY_NAME = "Aung Shin Thant Htun"
 
 CUSTOM_EMOJIS = {
     "region": "5447410659077661506",
-    "name": "5206607081334906820",
     "checked": "6172491616423514581",
     "products": "5231012545799666522",
     "weekly_pass": "6172491616423514581",
@@ -103,13 +100,24 @@ def init_db():
         """)
 
 
-def main_keyboard():
+def welcome_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Start", callback_data="go_start", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
+    ])
+
+
+def main_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Products", callback_data="menu_products", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["products"])],
         [InlineKeyboardButton(text="Region Check", callback_data="menu_region", style="success", icon_custom_emoji_id=CUSTOM_EMOJIS["region"])],
         [InlineKeyboardButton(text="Support", callback_data="menu_support", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
-        [InlineKeyboardButton(text="Feedback", callback_data="menu_feedback", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["checked"])],
+        [InlineKeyboardButton(text="Feedback", callback_data="menu_feedback", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["feedback"])],
+    ])
+
+
+def back_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Back", callback_data="back_menu", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
     ])
 
 
@@ -203,7 +211,7 @@ async def start(message: Message, state: FSMContext):
         "အောက်က card menu မှာ လိုချင်တဲ့ service ကိုရွေးပါ။",
         "🎮",
     )
-    await message.answer(welcome_text, entities=welcome_entities, reply_markup=main_keyboard())
+    await message.answer(welcome_text, entities=welcome_entities, reply_markup=welcome_keyboard())
 
 
 @router.callback_query(F.data == "go_start")
@@ -245,7 +253,8 @@ async def buy_weekly(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(
         f"{PRODUCT_NAME} order စတင်ပါမယ်။\n\n"
         "MLBB User ID ကို ဂဏန်းသီးသန့်ပို့ပါ။\n"
-        "ဥပမာ: 651256402"
+        "ဥပမာ: 651256402",
+        reply_markup=cancel_order_keyboard(),
     )
 
 
@@ -253,11 +262,11 @@ async def buy_weekly(callback: CallbackQuery, state: FSMContext):
 async def receive_player_id(message: Message, state: FSMContext):
     value = (message.text or "").strip()
     if not value.isdigit():
-        await message.answer("User ID က ဂဏန်းသီးသန့် ဖြစ်ရပါမယ်။ ပြန်ပို့ပါ။")
+        await message.answer("User ID က ဂဏန်းသီးသန့် ဖြစ်ရပါမယ်။ ပြန်ပို့ပါ။", reply_markup=cancel_order_keyboard())
         return
     await state.update_data(player_id=value)
     await state.set_state(UserFlow.waiting_zone_id)
-    await message.answer("MLBB Server ID / Zone ID ကို ဂဏန်းသီးသန့်ပို့ပါ။\nဥပမာ: 8592")
+    await message.answer("MLBB Server ID / Zone ID ကို ဂဏန်းသီးသန့်ပို့ပါ။\nဥပမာ: 8592", reply_markup=cancel_order_keyboard())
 
 
 @router.message(UserFlow.waiting_zone_id)
@@ -350,14 +359,14 @@ async def region_start(message: Message, state: FSMContext):
         "ဥပမာ: <code>651256402 8592</code>",
         "🌍",
     )
-    await message.answer(region_text, entities=region_entities)
+    await message.answer(region_text, entities=region_entities, reply_markup=back_keyboard(), parse_mode=None)
 
 
 @router.message(UserFlow.waiting_region_input)
 async def region_check(message: Message, state: FSMContext):
     parts = (message.text or "").strip().split()
     if len(parts) != 2 or not all(part.isdigit() for part in parts):
-        await message.answer("ပုံစံမှားနေပါတယ်။ ဥပမာ <code>651256402 8592</code> လို့ပို့ပါ။")
+        await message.answer("ပုံစံမှားနေပါတယ်။ ဥပမာ <code>651256402 8592</code> လို့ပို့ပါ။", reply_markup=back_keyboard())
         return
     player_id, zone_id = parts
     await message.answer("စစ်ဆေးနေပါတယ်။ ခဏစောင့်ပါ…")
@@ -369,7 +378,7 @@ async def region_check(message: Message, state: FSMContext):
                     raise RuntimeError(f"HTTP {response.status}")
                 payload = await response.json(content_type=None)
         if payload.get("status") != "success":
-            await message.answer("ဒီ ID/Zone ကို စစ်ဆေးလို့မရပါ။ ID နဲ့ Zone ပြန်စစ်ပြီး ထပ်ကြိုးစားပါ။")
+            await message.answer("ဒီ ID/Zone ကို စစ်ဆေးလို့မရပါ။ ID နဲ့ Zone ပြန်စစ်ပြီး ထပ်ကြိုးစားပါ။", reply_markup=back_keyboard())
             return
         player = payload.get("data", {}).get("player", {})
         stats = payload.get("data", {}).get("double_diamond_stats", {})
@@ -383,9 +392,9 @@ async def region_check(message: Message, state: FSMContext):
             ("region", f"Region: {region_display}", "🌍"),
             ("checked", f"Double Diamond: {stats.get('overall', 'Unknown')}", "✅"),
         ])
-        await message.answer(result_text, entities=result_entities, parse_mode=None)
+        await message.answer(result_text, entities=result_entities, reply_markup=back_keyboard(), parse_mode=None)
     except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, RuntimeError):
-        await message.answer("Region API ခဏမရနိုင်ပါ။ ခဏနားပြီး ပြန်စမ်းပါ။")
+        await message.answer("Region API ခဏမရနိုင်ပါ။ ခဏနားပြီး ပြန်စမ်းပါ။", reply_markup=back_keyboard())
     finally:
         await state.clear()
 
@@ -399,9 +408,9 @@ async def menu_support(callback: CallbackQuery):
 @router.message(F.text == "Support")
 async def support(message: Message):
     if SUPPORT_USERNAME:
-        await message.answer(f"Support: https://t.me/{SUPPORT_USERNAME.lstrip('@')}")
+        await message.answer(f"Support: https://t.me/{SUPPORT_USERNAME.lstrip('@')}", reply_markup=back_keyboard())
     else:
-        await message.answer("Support အတွက် Admin ကို Telegram မှာ ဆက်သွယ်ပါ။")
+        await message.answer("Support အတွက် Admin ကို Telegram မှာ ဆက်သွယ်ပါ။", reply_markup=back_keyboard())
 
 
 @router.callback_query(F.data == "menu_feedback")
@@ -412,7 +421,7 @@ async def menu_feedback(callback: CallbackQuery, state: FSMContext):
         ("feedback", "Feedback ပို့ချင်တာကို ဒီ chat ထဲမှာ စာ၊ ပုံ သို့မဟုတ် video အဖြစ် ပို့ပါ။", "✍️"),
         ("feedback", "သင့်အမည်နဲ့ Telegram ID ကို admin ဆီ အတူပို့ပေးပါမယ်။", "📩"),
     ])
-    await callback.message.answer(feedback_text, entities=feedback_entities, parse_mode=None)
+    await callback.message.answer(feedback_text, entities=feedback_entities, reply_markup=back_keyboard(), parse_mode=None)
 
 
 @router.message(UserFlow.waiting_feedback)
@@ -433,7 +442,7 @@ async def receive_feedback(message: Message, state: FSMContext, bot: Bot):
     await bot.send_message(ADMIN_ID, info)
     await bot.copy_message(chat_id=ADMIN_ID, from_chat_id=message.chat.id, message_id=message.message_id)
     await state.clear()
-    await message.answer("✅ Feedback ကို admin ဆီ ပို့ပြီးပါပြီ။ ကျေးဇူးတင်ပါတယ်။", reply_markup=main_keyboard())
+        await message.answer("✅ Feedback ကို admin ဆီ ပို့ပြီးပါပြီ။ ကျေးဇူးတင်ပါတယ်။", reply_markup=main_keyboard())
 
 
 @router.message(Command("saveemoji"))
@@ -597,4 +606,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
