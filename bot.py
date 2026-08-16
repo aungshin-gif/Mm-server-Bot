@@ -1,3 +1,4 @@
+
 import asyncio
 import logging
 import os
@@ -6,6 +7,7 @@ import sqlite3
 from datetime import datetime
 from html import escape
 
+from aiohttp import web
 import aiohttp
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
@@ -28,6 +30,7 @@ logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "")
+PARSE_API_KEY = os.getenv("PARSE_API_KEY", "")
 DB_PATH = os.getenv("DB_PATH", "bot.db")
 ROLECHECK_URL = "https://www.gameshopbot.online/mlbb_checkrole-main/api/games/mlbb_checkrole"
 
@@ -44,6 +47,7 @@ class UserFlow(StatesGroup):
     waiting_player_id = State()
     waiting_zone_id = State()
     waiting_payment_screenshot = State()
+    waiting_feedback = State()
 
 
 def db():
@@ -79,14 +83,22 @@ def init_db():
 
 
 def main_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Products"), KeyboardButton(text="Region စစ်ရန်")],
-            [KeyboardButton(text="Support")],
-        ],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📦 Products", callback_data="menu_products")],
+        [InlineKeyboardButton(text="🌍 Region Check", callback_data="menu_region")],
+        [InlineKeyboardButton(text="💬 Support", callback_data="menu_support")],
+        [InlineKeyboardButton(text="✍️ Feedback", callback_data="menu_feedback")],
+        [InlineKeyboardButton(text="🏆 Hero Tier List", callback_data="menu_tier")],
+    ])
+
+
+def order_admin_keyboard(order_id: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Approve", callback_data=f"approve_order:{order_id}"),
+            InlineKeyboardButton(text="❌ Reject", callback_data=f"reject_order:{order_id}"),
+        ]
+    ])
 
 
 def product_keyboard():
@@ -131,10 +143,17 @@ def emoji_text(label: str, fallback: str):
 async def start(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "မင်္ဂလာပါ။ MLBB Myanmar Server Top-up Bot မှ ကြိုဆိုပါတယ်။\n\n"
-        "အောက်က menu ကနေ Products, Region စစ်ရန် သို့မဟုတ် Support ကိုရွေးပါ။",
+        "🎮 <b>Gamepay Hub ရဲ့ အပျင်းပြေ Bot မှ ကြိုဆိုပါတယ်။</b>\n\n"
+        "ဒီ Bot မှာ MLBB Myanmar Server diamond နှင့် Region စစ်ဆေးခြင်း service ရရှိနိုင်ပါတယ်။\n\n"
+        "အောက်က card menu မှာ လိုချင်တဲ့ service ကိုရွေးပါ။",
         reply_markup=main_keyboard(),
     )
+
+
+@router.callback_query(F.data == "menu_products")
+async def menu_products(callback: CallbackQuery):
+    await callback.answer()
+    await products(callback.message)
 
 
 @router.message(F.text == "Products")
@@ -229,12 +248,18 @@ async def receive_payment(message: Message, state: FSMContext, bot: Bot):
             f"Approve: <code>/approve {order_id}</code>\n"
             f"Reject: <code>/reject {order_id}</code>"
         )
-        await bot.send_photo(ADMIN_ID, photo_id, caption=admin_text)
+        await bot.send_photo(ADMIN_ID, photo_id, caption=admin_text, reply_markup=order_admin_keyboard(order_id))
 
 
 @router.message(UserFlow.waiting_payment_screenshot)
 async def payment_not_photo(message: Message):
     await message.answer("Payment screenshot ကို ပုံအဖြစ်ပို့ပေးပါ။")
+
+
+@router.callback_query(F.data == "menu_region")
+async def menu_region(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await region_start(callback.message, state)
 
 
 @router.message(F.text == "Region စစ်ရန်")
@@ -283,12 +308,106 @@ async def region_check(message: Message, state: FSMContext):
         await state.clear()
 
 
+@router.callback_query(F.data == "menu_support")
+async def menu_support(callback: CallbackQuery):
+    await callback.answer()
+    await support(callback.message)
+
+
 @router.message(F.text == "Support")
 async def support(message: Message):
     if SUPPORT_USERNAME:
         await message.answer(f"Support: https://t.me/{SUPPORT_USERNAME.lstrip('@')}")
     else:
         await message.answer("Support အတွက် Admin ကို Telegram မှာ ဆက်သွယ်ပါ။")
+
+
+@router.callback_query(F.data == "menu_tier")
+async def menu_tier(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.answer(
+        "🏆 <b>MLBB Hero Tier List</b>\n\n"
+        "လက်ရှိ စမ်းသပ်ရန် EXP Lane / Tank tier list ကိုယူမယ်။",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="EXP Lane • Tank", callback_data="tier_exp_tank")],
+            [InlineKeyboardButton(text="⬅️ Main Menu", callback_data="back_menu")],
+        ])
+    )
+
+
+@router.callback_query(F.data == "back_menu")
+async def back_menu(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.answer("Main Menu", reply_markup=main_keyboard())
+
+
+@router.callback_query(F.data == "tier_exp_tank")
+async def tier_exp_tank(callback: CallbackQuery):
+    await callback.answer()
+    if not PARSE_API_KEY:
+        await callback.message.answer("Tier List API key မထည့်ရသေးပါ။ Render Environment Variables ထဲမှာ PARSE_API_KEY ထည့်ပါ။")
+        return
+    url = "https://api.parse.bot/scraper/574cbcf8-811b-4ed8-8128-c5e9a39efcc8/get_hero_tier_list"
+    await callback.message.answer("🏆 EXP Lane / Tank tier list ရယူနေပါတယ်…")
+    try:
+        timeout = aiohttp.ClientTimeout(total=15)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(
+                url,
+                params={"lane": "Exp Lane", "role": "Tank"},
+                headers={"X-API-Key": PARSE_API_KEY},
+            ) as response:
+                if response.status != 200:
+                    raise RuntimeError(f"HTTP {response.status}")
+                payload = await response.json(content_type=None)
+        heroes = payload.get("data", {}).get("heroes", [])
+        if payload.get("status") != "success" or not heroes:
+            await callback.message.answer("Tier list data မရပါ။ ခဏနားပြီး ပြန်စမ်းပါ။")
+            return
+        heroes = sorted(heroes, key=lambda item: float(item.get("score", 0)), reverse=True)
+        lines = ["🏆 <b>EXP Lane • Tank Tier List</b>", ""]
+        for index, hero in enumerate(heroes[:10], start=1):
+            name = escape(str(hero.get("hero_name", "Unknown")))
+            tier = escape(str(hero.get("tier", "?")))
+            score = hero.get("score", "-")
+            lines.append(f"{index}. <b>{name}</b> — Tier <b>{tier}</b> — Score {score}")
+        updated = payload.get("data", {}).get("lastUpdated") or payload.get("lastUpdated")
+        if updated:
+            lines.append(f"\nUpdated: <code>{escape(str(updated))}</code>")
+        await callback.message.answer("\n".join(lines))
+    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, RuntimeError):
+        await callback.message.answer("Tier List API ခဏမရနိုင်ပါ။ API key နဲ့ request limit ကို စစ်ပြီး ပြန်စမ်းပါ။")
+
+
+@router.callback_query(F.data == "menu_feedback")
+async def menu_feedback(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(UserFlow.waiting_feedback)
+    await callback.message.answer(
+        "✍️ Feedback ပို့ချင်တာကို ဒီ chat ထဲမှာ စာ၊ ပုံ သို့မဟုတ် video အဖြစ် ပို့ပါ။\n\n"
+        "သင့်အမည်နဲ့ Telegram ID ကို admin ဆီ အတူပို့ပေးပါမယ်။"
+    )
+
+
+@router.message(UserFlow.waiting_feedback)
+async def receive_feedback(message: Message, state: FSMContext, bot: Bot):
+    if not ADMIN_ID:
+        await state.clear()
+        await message.answer("Feedback လက်ခံမယ့် admin မသတ်မှတ်ရသေးပါ။")
+        return
+    username = f"@{message.from_user.username}" if message.from_user.username else "မရှိပါ"
+    name = escape(message.from_user.full_name or "မသိရပါ")
+    info = (
+        "📩 <b>Feedback အသစ်</b>\n\n"
+        f"Name: <b>{name}</b>\n"
+        f"Username: {escape(username)}\n"
+        f"Telegram ID: <code>{message.from_user.id}</code>\n"
+        f"Chat ID: <code>{message.chat.id}</code>"
+    )
+    await bot.send_message(ADMIN_ID, info)
+    await bot.copy_message(chat_id=ADMIN_ID, from_chat_id=message.chat.id, message_id=message.message_id)
+    await state.clear()
+    await message.answer("✅ Feedback ကို admin ဆီ ပို့ပြီးပါပြီ။ ကျေးဇူးတင်ပါတယ်။", reply_markup=main_keyboard())
 
 
 @router.message(Command("saveemoji"))
@@ -325,6 +444,42 @@ async def list_emojis(message: Message):
         return
     text = "Saved emojis\n\n" + "\n".join(f"{row['label']}: <code>{row['custom_emoji_id']}</code>" for row in rows)
     await message.answer(text)
+
+
+@router.callback_query(F.data.startswith("approve_order:"))
+async def approve_order_button(callback: CallbackQuery, bot: Bot):
+    if not admin_only(callback.from_user.id):
+        await callback.answer("Admin only", show_alert=True)
+        return
+    order_id = int(callback.data.split(":", 1)[1])
+    with db() as con:
+        order = con.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+        if order:
+            con.execute("UPDATE orders SET status='approved', approved_at=? WHERE id=?", (datetime.utcnow().isoformat(timespec="seconds") + "Z", order_id))
+    if not order:
+        await callback.answer("Order မတွေ့ပါ", show_alert=True)
+        return
+    await bot.send_message(order["user_id"], f"✅ Order #{order_id} ကို approve လုပ်ပြီးပါပြီ။\\n{PRODUCT_NAME} top-up ကို admin က ဆက်လက်လုပ်ဆောင်ပေးပါမယ်။")
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Approved")
+
+
+@router.callback_query(F.data.startswith("reject_order:"))
+async def reject_order_button(callback: CallbackQuery, bot: Bot):
+    if not admin_only(callback.from_user.id):
+        await callback.answer("Admin only", show_alert=True)
+        return
+    order_id = int(callback.data.split(":", 1)[1])
+    with db() as con:
+        order = con.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+        if order:
+            con.execute("UPDATE orders SET status='rejected' WHERE id=?", (order_id,))
+    if not order:
+        await callback.answer("Order မတွေ့ပါ", show_alert=True)
+        return
+    await bot.send_message(order["user_id"], f"❌ Order #{order_id} ကို reject လုပ်ထားပါတယ်။\\nPayment အချက်အလက် မရှင်းလင်းပါက Support ကို ဆက်သွယ်ပါ။")
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Rejected")
 
 
 @router.message(Command("approve"))
@@ -367,6 +522,36 @@ async def reject_order(message: Message, bot: Bot):
     await message.answer(f"Order #{order_id} rejected ပါပြီ။")
 
 
+@router.message()
+async def admin_emoji_id_reply(message: Message):
+    if not admin_only(message.from_user.id):
+        return
+    emoji_id = extract_custom_emoji_id(message)
+    if emoji_id:
+        await message.answer(
+            "🆔 Custom emoji ID\n\n"
+            f"<code>{emoji_id}</code>\n\n"
+            "ဒီ ID ကို copy လုပ်ပြီး emoji system မှာသုံးနိုင်ပါတယ်။"
+        )
+
+
+async def health_handler(request):
+    return web.json_response({"status": "ok", "service": "mlbb-topup-bot"})
+
+
+async def start_health_server():
+    app = web.Application()
+    app.router.add_get("/", health_handler)
+    app.router.add_get("/health", health_handler)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", "10000"))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logging.info("Health server listening on port %s", port)
+    return runner
+
+
 async def main():
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN is missing. Put it in .env or server environment.")
@@ -378,7 +563,10 @@ async def main():
     dp.include_router(router)
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("Bot started")
-    await dp.start_polling(bot)
+    await asyncio.gather(
+        dp.start_polling(bot),
+        start_health_server(),
+    )
 
 
 if __name__ == "__main__":
