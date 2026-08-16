@@ -15,7 +15,6 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
-    FSInputFile,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -31,7 +30,6 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "")
 DB_PATH = os.getenv("DB_PATH", "bot.db")
-BANNER_PATH = os.path.join(os.path.dirname(__file__), "gamepay_hub_banner.png")
 ROLECHECK_URL = "https://www.gameshopbot.online/mlbb_checkrole-main/api/games/mlbb_checkrole"
 
 PRODUCT_NAME = "Weekly Pass"
@@ -173,7 +171,7 @@ def emoji_text(label: str, fallback: str):
     if not custom_id:
         return fallback, None
     text = "😀"
-    entity = MessageEntity(type="custom_emoji", offset=0, length=1, custom_emoji_id=custom_id)
+    entity = MessageEntity(type="custom_emoji", offset=0, length=2, custom_emoji_id=custom_id)
     return text, [entity]
 
 
@@ -196,7 +194,7 @@ def custom_lines(lines):
         entities.append(MessageEntity(
             type="custom_emoji",
             offset=offset_units,
-            length=1,
+            length=2,
             custom_emoji_id=CUSTOM_EMOJIS.get(label) or get_custom_emoji(label),
         ))
         offset_units += len((line + "\n").encode("utf-16-le")) // 2
@@ -213,11 +211,6 @@ async def start(message: Message, state: FSMContext):
         "အောက်က card menu မှာ လိုချင်တဲ့ service ကိုရွေးပါ။",
         "🎮",
     )
-    if os.path.exists(BANNER_PATH):
-        await message.answer_photo(
-            FSInputFile(BANNER_PATH),
-            caption="GamePay Hub\nSupporting Education\nStudent discounts available",
-        )
     await message.answer(welcome_text, entities=welcome_entities, reply_markup=welcome_keyboard())
 
 
@@ -614,6 +607,10 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+
+
 
 
 
