@@ -1,4 +1,3 @@
-
 import asyncio
 import logging
 import os
@@ -94,10 +93,10 @@ def init_db():
 
 def main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📦 Products", callback_data="menu_products")],
-        [InlineKeyboardButton(text="🌍 Region Check", callback_data="menu_region")],
-        [InlineKeyboardButton(text="💬 Support", callback_data="menu_support")],
-        [InlineKeyboardButton(text="✍️ Feedback", callback_data="menu_feedback")],
+        [InlineKeyboardButton(text="Products", callback_data="menu_products", style="danger")],
+        [InlineKeyboardButton(text="Region Check", callback_data="menu_region", style="success")],
+        [InlineKeyboardButton(text="Support", callback_data="menu_support", style="primary")],
+        [InlineKeyboardButton(text="Feedback", callback_data="menu_feedback", style="primary")],
     ])
 
 
@@ -112,7 +111,8 @@ def order_admin_keyboard(order_id: int):
 
 def product_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="ဝယ်မည် - 6,000 Ks", callback_data="buy_weekly")],
+        [InlineKeyboardButton(text="💎 Weekly Pass • 6,000 Ks • Stock: 1", callback_data="buy_weekly", style="danger")],
+        [InlineKeyboardButton(text="Main Menu", callback_data="back_menu", style="primary")],
     ])
 
 
@@ -174,15 +174,23 @@ async def menu_products(callback: CallbackQuery):
     await products(callback.message)
 
 
+@router.callback_query(F.data == "back_menu")
+async def back_menu(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.answer("Main Menu", reply_markup=main_keyboard())
+
+
 @router.message(F.text == "Products")
 @router.message(Command("products"))
 async def products(message: Message):
     product_text, product_entities = custom_prefix(
         "products",
-        "<b>Available Product</b>\n\n"
-        f"• {PRODUCT_NAME}\n"
-        f"• Price: {PRODUCT_PRICE:,} Ks\n\n"
-        "ဝယ်ယူရန် အောက်က card ကိုနှိပ်ပါ။",
+        "<b>GAMEPAY HUB CATALOGUE</b>\n"
+        "━━━━━━━━━━━━━━━━\n\n"
+        "ဝယ်ယူလိုသော product ကို အောက်က card မှာရွေးပါ။\n\n"
+        "⚡ Fast delivery\n"
+        "🟢 Stock ရှိပါသည်\n"
+        "🔒 Secure checkout",
         "📦",
     )
     await message.answer(product_text, entities=product_entities, reply_markup=product_keyboard())
