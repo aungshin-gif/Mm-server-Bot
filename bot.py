@@ -1,3 +1,4 @@
+
 import asyncio
 import logging
 import os
@@ -93,10 +94,10 @@ def init_db():
 
 def main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Products", callback_data="menu_products", style="danger")],
-        [InlineKeyboardButton(text="Region Check", callback_data="menu_region", style="success")],
-        [InlineKeyboardButton(text="Support", callback_data="menu_support", style="primary")],
-        [InlineKeyboardButton(text="Feedback", callback_data="menu_feedback", style="primary")],
+        [InlineKeyboardButton(text="Products", callback_data="menu_products", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["products"])],
+        [InlineKeyboardButton(text="Region Check", callback_data="menu_region", style="success", icon_custom_emoji_id=CUSTOM_EMOJIS["region"])],
+        [InlineKeyboardButton(text="Support", callback_data="menu_support", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
+        [InlineKeyboardButton(text="Feedback", callback_data="menu_feedback", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["checked"])],
     ])
 
 
@@ -111,8 +112,8 @@ def order_admin_keyboard(order_id: int):
 
 def product_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💎 Weekly Pass • 6,000 Ks • Stock: 1", callback_data="buy_weekly", style="danger")],
-        [InlineKeyboardButton(text="Main Menu", callback_data="back_menu", style="primary")],
+        [InlineKeyboardButton(text="Weekly Pass • 6,000 Ks • Stock: 1", callback_data="buy_weekly", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["weekly_pass"])],
+        [InlineKeyboardButton(text="Main Menu", callback_data="back_menu", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
     ])
 
 
@@ -143,7 +144,7 @@ def emoji_text(label: str, fallback: str):
     custom_id = CUSTOM_EMOJIS.get(label) or get_custom_emoji(label)
     if not custom_id:
         return fallback, None
-    text = "●"
+    text = "😀"
     entity = MessageEntity(type="custom_emoji", offset=0, length=1, custom_emoji_id=custom_id)
     return text, [entity]
 
