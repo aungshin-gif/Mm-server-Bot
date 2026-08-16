@@ -30,7 +30,6 @@ logging.basicConfig(level=logging.INFO)
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "")
-PARSE_API_KEY = os.getenv("PARSE_API_KEY", "")
 DB_PATH = os.getenv("DB_PATH", "bot.db")
 ROLECHECK_URL = "https://www.gameshopbot.online/mlbb_checkrole-main/api/games/mlbb_checkrole"
 
@@ -38,6 +37,17 @@ PRODUCT_NAME = "Weekly Pass"
 PRODUCT_PRICE = 6000
 KBZPAY_NUMBER = "09795687480"
 KBZPAY_NAME = "Aung Shin Thant Htun"
+
+CUSTOM_EMOJIS = {
+    "region": "5447410659077661506",
+    "name": "5206607081334906820",
+    "checked": "6172491616423514581",
+    "products": "5231012545799666522",
+    "weekly_pass": "6172491616423514581",
+    "diamond": "5427168083074628963",
+    "kbzpay": "6217312653879024991",
+    "welcome": "5409109841538994759",
+}
 
 router = Router()
 
@@ -88,7 +98,6 @@ def main_keyboard():
         [InlineKeyboardButton(text="🌍 Region Check", callback_data="menu_region")],
         [InlineKeyboardButton(text="💬 Support", callback_data="menu_support")],
         [InlineKeyboardButton(text="✍️ Feedback", callback_data="menu_feedback")],
-        [InlineKeyboardButton(text="🏆 Hero Tier List", callback_data="menu_tier")],
     ])
 
 
@@ -131,7 +140,7 @@ def extract_custom_emoji_id(message: Message):
 
 
 def emoji_text(label: str, fallback: str):
-    custom_id = get_custom_emoji(label)
+    custom_id = CUSTOM_EMOJIS.get(label) or get_custom_emoji(label)
     if not custom_id:
         return fallback, None
     text = "●"
@@ -139,15 +148,24 @@ def emoji_text(label: str, fallback: str):
     return text, [entity]
 
 
+def custom_prefix(label: str, body: str, fallback: str):
+    prefix, entities = emoji_text(label, fallback)
+    if entities:
+        return f"{prefix} {body}", entities
+    return f"{fallback} {body}", None
+
+
 @router.message(Command("start"))
 async def start(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer(
-        "🎮 <b>Gamepay Hub ရဲ့ အပျင်းပြေ Bot မှ ကြိုဆိုပါတယ်။</b>\n\n"
+    welcome_text, welcome_entities = custom_prefix(
+        "welcome",
+        "<b>Gamepay Hub ရဲ့ အပျင်းပြေ Bot မှ ကြိုဆိုပါတယ်။</b>\n\n"
         "ဒီ Bot မှာ MLBB Myanmar Server diamond နှင့် Region စစ်ဆေးခြင်း service ရရှိနိုင်ပါတယ်။\n\n"
         "အောက်က card menu မှာ လိုချင်တဲ့ service ကိုရွေးပါ။",
-        reply_markup=main_keyboard(),
+        "🎮",
     )
+    await message.answer(welcome_text, entities=welcome_entities, reply_markup=main_keyboard())
 
 
 @router.callback_query(F.data == "menu_products")
@@ -159,13 +177,15 @@ async def menu_products(callback: CallbackQuery):
 @router.message(F.text == "Products")
 @router.message(Command("products"))
 async def products(message: Message):
-    await message.answer(
-        "📦 Available Product\n\n"
+    product_text, product_entities = custom_prefix(
+        "products",
+        "<b>Available Product</b>\n\n"
         f"• {PRODUCT_NAME}\n"
         f"• Price: {PRODUCT_PRICE:,} Ks\n\n"
-        "ဝယ်ယူရန် အောက်က button ကိုနှိပ်ပါ။",
-        reply_markup=product_keyboard(),
+        "ဝယ်ယူရန် အောက်က card ကိုနှိပ်ပါ။",
+        "📦",
     )
+    await message.answer(product_text, entities=product_entities, reply_markup=product_keyboard())
 
 
 @router.callback_query(F.data == "buy_weekly")
@@ -266,10 +286,13 @@ async def menu_region(callback: CallbackQuery, state: FSMContext):
 @router.message(Command("region"))
 async def region_start(message: Message, state: FSMContext):
     await state.set_state(UserFlow.waiting_region_input)
-    await message.answer(
-        "MLBB User ID နဲ့ Server/Zone ID ကို space ခြားပြီးပို့ပါ။\n"
-        "ဥပမာ: <code>651256402 8592</code>"
+    region_text, region_entities = custom_prefix(
+        "region",
+        "<b>MLBB User ID နဲ့ Server/Zone ID ကို space ခြားပြီးပို့ပါ။</b>\n"
+        "ဥပမာ: <code>651256402 8592</code>",
+        "🌍",
     )
+    await message.answer(region_text, entities=region_entities)
 
 
 @router.message(UserFlow.waiting_region_input)
@@ -320,63 +343,6 @@ async def support(message: Message):
         await message.answer(f"Support: https://t.me/{SUPPORT_USERNAME.lstrip('@')}")
     else:
         await message.answer("Support အတွက် Admin ကို Telegram မှာ ဆက်သွယ်ပါ။")
-
-
-@router.callback_query(F.data == "menu_tier")
-async def menu_tier(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.answer(
-        "🏆 <b>MLBB Hero Tier List</b>\n\n"
-        "လက်ရှိ စမ်းသပ်ရန် EXP Lane / Tank tier list ကိုယူမယ်။",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="EXP Lane • Tank", callback_data="tier_exp_tank")],
-            [InlineKeyboardButton(text="⬅️ Main Menu", callback_data="back_menu")],
-        ])
-    )
-
-
-@router.callback_query(F.data == "back_menu")
-async def back_menu(callback: CallbackQuery):
-    await callback.answer()
-    await callback.message.answer("Main Menu", reply_markup=main_keyboard())
-
-
-@router.callback_query(F.data == "tier_exp_tank")
-async def tier_exp_tank(callback: CallbackQuery):
-    await callback.answer()
-    if not PARSE_API_KEY:
-        await callback.message.answer("Tier List API key မထည့်ရသေးပါ။ Render Environment Variables ထဲမှာ PARSE_API_KEY ထည့်ပါ။")
-        return
-    url = "https://api.parse.bot/scraper/574cbcf8-811b-4ed8-8128-c5e9a39efcc8/get_hero_tier_list"
-    await callback.message.answer("🏆 EXP Lane / Tank tier list ရယူနေပါတယ်…")
-    try:
-        timeout = aiohttp.ClientTimeout(total=15)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(
-                url,
-                params={"lane": "Exp Lane", "role": "Tank"},
-                headers={"X-API-Key": PARSE_API_KEY},
-            ) as response:
-                if response.status != 200:
-                    raise RuntimeError(f"HTTP {response.status}")
-                payload = await response.json(content_type=None)
-        heroes = payload.get("data", {}).get("heroes", [])
-        if payload.get("status") != "success" or not heroes:
-            await callback.message.answer("Tier list data မရပါ။ ခဏနားပြီး ပြန်စမ်းပါ။")
-            return
-        heroes = sorted(heroes, key=lambda item: float(item.get("score", 0)), reverse=True)
-        lines = ["🏆 <b>EXP Lane • Tank Tier List</b>", ""]
-        for index, hero in enumerate(heroes[:10], start=1):
-            name = escape(str(hero.get("hero_name", "Unknown")))
-            tier = escape(str(hero.get("tier", "?")))
-            score = hero.get("score", "-")
-            lines.append(f"{index}. <b>{name}</b> — Tier <b>{tier}</b> — Score {score}")
-        updated = payload.get("data", {}).get("lastUpdated") or payload.get("lastUpdated")
-        if updated:
-            lines.append(f"\nUpdated: <code>{escape(str(updated))}</code>")
-        await callback.message.answer("\n".join(lines))
-    except (aiohttp.ClientError, asyncio.TimeoutError, ValueError, RuntimeError):
-        await callback.message.answer("Tier List API ခဏမရနိုင်ပါ။ API key နဲ့ request limit ကို စစ်ပြီး ပြန်စမ်းပါ။")
 
 
 @router.callback_query(F.data == "menu_feedback")
@@ -571,3 +537,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
