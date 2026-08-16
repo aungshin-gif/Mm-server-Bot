@@ -104,22 +104,22 @@ def init_db():
 
 def welcome_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Start", callback_data="go_start", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
+        [InlineKeyboardButton(text="Start", callback_data="go_start", style="primary", )],
     ])
 
 
 def main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Products", callback_data="menu_products", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["products"])],
-        [InlineKeyboardButton(text="Region Check", callback_data="menu_region", style="success", icon_custom_emoji_id=CUSTOM_EMOJIS["region"])],
-        [InlineKeyboardButton(text="Support", callback_data="menu_support", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
-        [InlineKeyboardButton(text="Feedback", callback_data="menu_feedback", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["feedback"])],
+        [InlineKeyboardButton(text="Products", callback_data="menu_products", style="danger", )],
+        [InlineKeyboardButton(text="Region Check", callback_data="menu_region", style="success", )],
+        [InlineKeyboardButton(text="Support", callback_data="menu_support", style="primary", )],
+        [InlineKeyboardButton(text="Feedback", callback_data="menu_feedback", style="primary", )],
     ])
 
 
 def back_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Back", callback_data="back_menu", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
+        [InlineKeyboardButton(text="Back", callback_data="back_menu", style="primary", )],
     ])
 
 
@@ -134,14 +134,14 @@ def order_admin_keyboard(order_id: int):
 
 def product_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Weekly Pass • 6,000 Ks • Stock: 1", callback_data="buy_weekly", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["weekly_pass"])],
-        [InlineKeyboardButton(text="Main Menu", callback_data="back_menu", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
+        [InlineKeyboardButton(text="Weekly Pass • 6,000 Ks • Stock: 1", callback_data="buy_weekly", style="danger", )],
+        [InlineKeyboardButton(text="Main Menu", callback_data="back_menu", style="primary", )],
     ])
 
 
 def cancel_order_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Cancel Order", callback_data="cancel_order", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["cancel"])],
+        [InlineKeyboardButton(text="Cancel Order", callback_data="cancel_order", style="danger", )],
     ])
 
 
@@ -225,7 +225,7 @@ async def start(message: Message, state: FSMContext):
 async def go_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
-    await callback.message.edit_reply_markup(reply_markup=main_keyboard())
+    await callback.message.answer("Main Menu", reply_markup=main_keyboard())
 
 
 @router.callback_query(F.data == "menu_products")
@@ -614,5 +614,6 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
 
 
