@@ -1,3 +1,4 @@
+
 import asyncio
 import logging
 import os
@@ -102,44 +103,49 @@ def init_db():
 
 def welcome_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Start", callback_data="go_start", style="primary", )],
+        [InlineKeyboardButton(
+            text="Start",
+            callback_data="go_start",
+            style="primary",
+            icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"],
+        )],
     ])
 
 
 def main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Products", callback_data="menu_products", style="danger", )],
-        [InlineKeyboardButton(text="Region Check", callback_data="menu_region", style="success", )],
-        [InlineKeyboardButton(text="Support", callback_data="menu_support", style="primary", )],
-        [InlineKeyboardButton(text="Feedback", callback_data="menu_feedback", style="primary", )],
+        [InlineKeyboardButton(text="Products", callback_data="menu_products", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["products"])],
+        [InlineKeyboardButton(text="Region Check", callback_data="menu_region", style="success", icon_custom_emoji_id=CUSTOM_EMOJIS["region"])],
+        [InlineKeyboardButton(text="Support", callback_data="menu_support", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
+        [InlineKeyboardButton(text="Feedback", callback_data="menu_feedback", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["feedback"])],
     ])
 
 
 def back_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Back", callback_data="back_menu", style="primary", )],
+        [InlineKeyboardButton(text="Back", callback_data="back_menu", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
     ])
 
 
 def order_admin_keyboard(order_id: int):
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="✅ Approve", callback_data=f"approve_order:{order_id}"),
-            InlineKeyboardButton(text="❌ Reject", callback_data=f"reject_order:{order_id}"),
+            InlineKeyboardButton(text="Approve", callback_data=f"approve_order:{order_id}", style="success", icon_custom_emoji_id=CUSTOM_EMOJIS["checked"]),
+            InlineKeyboardButton(text="Reject", callback_data=f"reject_order:{order_id}", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["cancel"]),
         ]
     ])
 
 
 def product_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Weekly Pass • 6,000 Ks • Stock: 1", callback_data="buy_weekly", style="danger", )],
-        [InlineKeyboardButton(text="Main Menu", callback_data="back_menu", style="primary", )],
+        [InlineKeyboardButton(text="Weekly Pass • 6,000 Ks • Stock: 1", callback_data="buy_weekly", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["weekly_pass"])],
+        [InlineKeyboardButton(text="Main Menu", callback_data="back_menu", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
     ])
 
 
 def cancel_order_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Cancel Order", callback_data="cancel_order", style="danger", )],
+        [InlineKeyboardButton(text="Cancel Order", callback_data="cancel_order", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["cancel"])],
     ])
 
 
@@ -169,9 +175,9 @@ def extract_custom_emoji_id(message: Message):
 def emoji_text(label: str, fallback: str):
     custom_id = CUSTOM_EMOJIS.get(label) or get_custom_emoji(label)
     if not custom_id:
-        return fallback, None
+        return "", None
     text = "😀"
-    entity = MessageEntity(type="custom_emoji", offset=0, length=2, custom_emoji_id=custom_id)
+    entity = MessageEntity(type="custom_emoji", offset=0, length=2, custom_emoji_id=str(custom_id))
     return text, [entity]
 
 
@@ -179,7 +185,7 @@ def custom_prefix(label: str, body: str, fallback: str):
     prefix, entities = emoji_text(label, fallback)
     if entities:
         return f"{prefix} {body}", entities
-    return f"{fallback} {body}", None
+    return body, None
 
 
 def custom_lines(lines):
@@ -189,14 +195,16 @@ def custom_lines(lines):
     offset_units = 0
     for label, body, fallback in lines:
         prefix, _ = emoji_text(label, fallback)
-        line = f"{prefix} {body}"
+        line = f"{prefix} {body}" if prefix else body
         text_parts.append(line)
-        entities.append(MessageEntity(
-            type="custom_emoji",
-            offset=offset_units,
-            length=2,
-            custom_emoji_id=CUSTOM_EMOJIS.get(label) or get_custom_emoji(label),
-        ))
+        custom_id = CUSTOM_EMOJIS.get(label) or get_custom_emoji(label)
+        if custom_id:
+            entities.append(MessageEntity(
+                type="custom_emoji",
+                offset=offset_units,
+                length=2,
+                custom_emoji_id=str(custom_id),
+            ))
         offset_units += len((line + "\n").encode("utf-16-le")) // 2
     return "\n".join(text_parts), entities
 
@@ -218,7 +226,13 @@ async def start(message: Message, state: FSMContext):
 async def go_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
-    await callback.message.answer("Main Menu", reply_markup=main_keyboard())
+    menu_text, menu_entities = custom_lines([
+        ("products", "Products", ""),
+        ("region", "Region Check", ""),
+        ("welcome", "Support", ""),
+        ("feedback", "Feedback", ""),
+    ])
+    await callback.message.answer(menu_text, entities=menu_entities, reply_markup=main_keyboard(), parse_mode=None)
 
 
 @router.callback_query(F.data == "menu_products")
@@ -243,7 +257,8 @@ async def products(message: Message):
         ("products", "ဝယ်ယူလိုသော product ကို အောက်က card မှာရွေးပါ။", "📦"),
         ("fast_delivery", "Fast delivery", "⚡"),
         ("stock", "Stock ရှိပါသည်", "🟢"),
-        ("secure_checkout", "Secure checkout", "🔒"),
+        ("secure_checkout", "Secure checkout", ""),
+        ("weekly_pass", "Weekly Pass • 6,000 Ks • Stock: 1", ""),
     ])
     await message.answer(product_text, entities=product_entities, reply_markup=product_keyboard(), parse_mode=None)
 
@@ -609,6 +624,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-
