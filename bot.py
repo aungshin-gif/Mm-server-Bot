@@ -1,3 +1,4 @@
+
 import asyncio
 import logging
 import os
@@ -230,7 +231,8 @@ async def menu_products(callback: CallbackQuery):
 @router.callback_query(F.data == "back_menu")
 async def back_menu(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.answer("Main Menu", reply_markup=main_keyboard())
+    menu_text, menu_entities = custom_prefix("welcome", "Main Menu", "🎮")
+    await callback.message.answer(menu_text, entities=menu_entities, reply_markup=main_keyboard(), parse_mode=None)
 
 
 @router.message(F.text == "Products")
@@ -356,18 +358,18 @@ async def region_start(message: Message, state: FSMContext):
     await state.set_state(UserFlow.waiting_region_input)
     region_text, region_entities = custom_prefix(
         "region",
-        "<b>MLBB User ID နဲ့ Server/Zone ID ကို space ခြားပြီးပို့ပါ။</b>\n"
-        "ဥပမာ: <code>651256402 8592</code>",
+        "MLBB User ID နဲ့ Server/Zone ID ကို space ခြားပြီးပို့ပါ။\n"
+        "ဥပမာ: 651256402 8592",
         "🌍",
     )
-    await message.answer(region_text, entities=region_entities, reply_markup=back_keyboard(), parse_mode=None)
+    await message.answer(region_text, entities=region_entities, reply_markup=back_keyboard())
 
 
 @router.message(UserFlow.waiting_region_input)
 async def region_check(message: Message, state: FSMContext):
     parts = (message.text or "").strip().split()
     if len(parts) != 2 or not all(part.isdigit() for part in parts):
-        await message.answer("ပုံစံမှားနေပါတယ်။ ဥပမာ <code>651256402 8592</code> လို့ပို့ပါ။", reply_markup=back_keyboard())
+        await message.answer("ပုံစံမှားနေပါတယ်။ ဥပမာ 651256402 8592 လို့ပို့ပါ။", reply_markup=back_keyboard())
         return
     player_id, zone_id = parts
     await message.answer("စစ်ဆေးနေပါတယ်။ ခဏစောင့်ပါ…")
@@ -409,9 +411,10 @@ async def menu_support(callback: CallbackQuery):
 @router.message(F.text == "Support")
 async def support(message: Message):
     if SUPPORT_USERNAME:
-        await message.answer(f"Support: https://t.me/{SUPPORT_USERNAME.lstrip('@')}", reply_markup=back_keyboard())
+        support_text, support_entities = custom_prefix("welcome", f"Support: https://t.me/{SUPPORT_USERNAME.lstrip('@')}", "🛟")
     else:
-        await message.answer("Support အတွက် Admin ကို Telegram မှာ ဆက်သွယ်ပါ။", reply_markup=back_keyboard())
+        support_text, support_entities = custom_prefix("welcome", "Support အတွက် Admin ကို Telegram မှာ ဆက်သွယ်ပါ။", "🛟")
+    await message.answer(support_text, entities=support_entities, reply_markup=back_keyboard(), parse_mode=None)
 
 
 @router.callback_query(F.data == "menu_feedback")
@@ -607,10 +610,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-
-
-
-
-
