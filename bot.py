@@ -114,11 +114,24 @@ def init_db():
                 updated_at TEXT NOT NULL
             )
         """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS product_prices (
+                code TEXT PRIMARY KEY,
+                price INTEGER NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
         now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
         for code in ["weekly", *DIAMOND_PRODUCTS.keys()]:
             con.execute(
                 "INSERT OR IGNORE INTO product_stock(code, available, updated_at) VALUES (?, 1, ?)",
                 (code, now),
+            )
+        default_prices = {"weekly": PRODUCT_PRICE, **{code: item["price"] for code, item in DIAMOND_PRODUCTS.items()}}
+        for code, price in default_prices.items():
+            con.execute(
+                "INSERT OR IGNORE INTO product_prices(code, price, updated_at) VALUES (?, ?, ?)",
+                (code, price, now),
             )
 
 
@@ -203,6 +216,33 @@ def decrement_product_stock(code: str) -> bool:
         return cursor.rowcount == 1
 
 
+def get_product_price(code: str) -> int:
+    with db() as con:
+        row = con.execute("SELECT price FROM product_prices WHERE code = ?", (code,)).fetchone()
+    if row:
+        return max(50, int(row["price"]))
+    if code == "weekly":
+        return PRODUCT_PRICE
+    return int(DIAMOND_PRODUCTS[code]["price"])
+
+
+def set_product_price(code: str, price: int):
+    price = max(50, int(price))
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    with db() as con:
+        con.execute(
+            "INSERT INTO product_prices(code, price, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(code) DO UPDATE SET price=excluded.price, updated_at=excluded.updated_at",
+            (code, price, now),
+        )
+
+
+def change_product_price(code: str, delta: int) -> int:
+    new_price = max(50, get_product_price(code) + int(delta))
+    set_product_price(code, new_price)
+    return new_price
+
+
 def product_code_from_name(product_name: str):
     if product_name == PRODUCT_NAME:
         return "weekly"
@@ -218,7 +258,7 @@ def restore_stock_for_order(order):
 def product_keyboard():
     rows = []
     weekly_stock = get_product_stock("weekly")
-    weekly_label = f"Weekly Pass • 6,000 Ks • Stock: {weekly_stock}" if weekly_stock > 0 else "Weekly Pass • Unavailable"
+    weekly_label = f"Weekly Pass • {get_product_price('weekly'):,} Ks • Stock: {weekly_stock}" if weekly_stock > 0 else "Weekly Pass • Unavailable"
     rows.append([InlineKeyboardButton(
         text=weekly_label,
         callback_data="buy:weekly" if weekly_stock > 0 else "unavailable",
@@ -227,7 +267,7 @@ def product_keyboard():
     )])
     for code, item in DIAMOND_PRODUCTS.items():
         stock = get_product_stock(code)
-        label = f"Diamond {item['diamonds']} • {item['price']:,} Ks • Stock: {stock}" if stock > 0 else f"Diamond {item['diamonds']} • Unavailable"
+        label = f"Diamond {item['diamonds']} • {get_product_price(code):,} Ks • Stock: {stock}" if stock > 0 else f"Diamond {item['diamonds']} • Unavailable"
         rows.append([InlineKeyboardButton(
             text=label,
             callback_data=f"buy:{code}" if stock > 0 else "unavailable",
@@ -353,10 +393,10 @@ async def products(message: Message):
         ("secure_checkout", "Secure checkout", ""),
     ]
     weekly_stock = get_product_stock("weekly")
-    product_lines.append(("weekly_pass", f"Weekly Pass • 6,000 Ks • Stock: {weekly_stock}" if weekly_stock > 0 else "Weekly Pass • Unavailable", ""))
+    product_lines.append(("weekly_pass", f"Weekly Pass • {get_product_price('weekly'):,} Ks • Stock: {weekly_stock}" if weekly_stock > 0 else "Weekly Pass • Unavailable", ""))
     for code, item in DIAMOND_PRODUCTS.items():
         stock = get_product_stock(code)
-        product_lines.append(("diamond", f"Diamond {item['diamonds']} • {item['price']:,} Ks • Stock: {stock}" if stock > 0 else f"Diamond {item['diamonds']} • Unavailable", ""))
+        product_lines.append(("diamond", f"Diamond {item['diamonds']} • {get_product_price(code):,} Ks • Stock: {stock}" if stock > 0 else f"Diamond {item['diamonds']} • Unavailable", ""))
     product_text, product_entities = custom_lines(product_lines)
     await message.answer(product_text, entities=product_entities, reply_markup=product_keyboard(), parse_mode=None)
 
@@ -371,10 +411,10 @@ async def buy_product(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     code = callback.data.split(":", 1)[1]
     if code == "weekly":
-        product_name, product_price = PRODUCT_NAME, PRODUCT_PRICE
+        product_name, product_price = PRODUCT_NAME, get_product_price("weekly")
     elif code in DIAMOND_PRODUCTS:
         item = DIAMOND_PRODUCTS[code]
-        product_name, product_price = item["name"], item["price"]
+        product_name, product_price = item["name"], get_product_price(code)
     else:
         await callback.answer("Product မတွေ့ပါ။", show_alert=True)
         return
@@ -595,8 +635,15 @@ def admin_panel_keyboard():
             InlineKeyboardButton(text=f"{name} • Stock: {stock}", callback_data=f"admin:noop:{code}", style="primary"),
         ])
         rows.append([
-            InlineKeyboardButton(text="−1", callback_data=f"admin:dec:{code}", style="danger"),
-            InlineKeyboardButton(text="+1", callback_data=f"admin:inc:{code}", style="success"),
+            InlineKeyboardButton(text="−1 Stock", callback_data=f"admin:dec:{code}", style="danger"),
+            InlineKeyboardButton(text="+1 Stock", callback_data=f"admin:inc:{code}", style="success"),
+        ])
+        rows.append([
+            InlineKeyboardButton(text=f"Price: {get_product_price(code):,} Ks", callback_data=f"admin:noop:{code}", style="primary"),
+        ])
+        rows.append([
+            InlineKeyboardButton(text="−50 Price", callback_data=f"admin:price_dec:{code}", style="danger"),
+            InlineKeyboardButton(text="+50 Price", callback_data=f"admin:price_inc:{code}", style="success"),
         ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -608,7 +655,8 @@ async def admin_panel(message: Message):
     await message.answer(
         "ADMIN STOCK PANEL\n\n"
         "−1 / +1 နဲ့ stock quantity ပြောင်းပါ။\n"
-        "အတိအကျထည့်ရန် /stock CODE NUMBER ကိုသုံးပါ။\n\n"
+        "−50 / +50 နဲ့ price ပြောင်းပါ။\n"
+        "အတိအကျထည့်ရန် /stock CODE NUMBER နဲ့ /price CODE AMOUNT ကိုသုံးပါ။\n\n"
         "Commands list: /adminhelp",
         reply_markup=admin_panel_keyboard(),
     )
@@ -628,14 +676,19 @@ async def admin_stock_callback(callback: CallbackQuery):
         change_product_stock(code, 1)
     elif action == "dec":
         change_product_stock(code, -1)
+    elif action == "price_inc":
+        change_product_price(code, 50)
+    elif action == "price_dec":
+        change_product_price(code, -50)
     await callback.message.edit_text(
         "ADMIN STOCK PANEL\n\n"
         "−1 / +1 နဲ့ stock quantity ပြောင်းပါ။\n"
-        "အတိအကျထည့်ရန် /stock CODE NUMBER ကိုသုံးပါ။\n\n"
+        "−50 / +50 နဲ့ price ပြောင်းပါ။\n"
+        "အတိအကျထည့်ရန် /stock CODE NUMBER နဲ့ /price CODE AMOUNT ကိုသုံးပါ။\n\n"
         "Commands list: /adminhelp",
         reply_markup=admin_panel_keyboard(),
     )
-    await callback.answer("Stock updated")
+    await callback.answer("Price updated" if action.startswith("price_") else "Stock updated")
 
 
 @router.callback_query(F.data.startswith("admin:noop:"))
@@ -658,13 +711,28 @@ async def stock_command(message: Message):
     await message.answer(f"{label}: Stock {quantity}")
 
 
+@router.message(Command("price"))
+async def price_command(message: Message):
+    if not admin_only(message.from_user.id):
+        return
+    args = (message.text or "").split()
+    valid_codes = {"weekly", *DIAMOND_PRODUCTS.keys()}
+    if len(args) != 3 or args[1] not in valid_codes or not args[2].isdigit():
+        await message.answer("အသုံးပြုပုံ: /price CODE AMOUNT\nဥပမာ: /price d202 10500\nအနည်းဆုံး price: 50 Ks")
+        return
+    code, price = args[1], int(args[2])
+    set_product_price(code, price)
+    label = PRODUCT_NAME if code == "weekly" else DIAMOND_PRODUCTS[code]["name"]
+    await message.answer(f"{label}: Price {get_product_price(code):,} Ks")
+
+
 @router.message(Command("stocks"))
 async def stocks_command(message: Message):
     if not admin_only(message.from_user.id):
         return
     lines = ["CURRENT STOCKS", ""]
-    products = [("weekly", PRODUCT_NAME, PRODUCT_PRICE)] + [
-        (code, item["name"], item["price"]) for code, item in DIAMOND_PRODUCTS.items()
+    products = [("weekly", PRODUCT_NAME, get_product_price("weekly"))] + [
+        (code, item["name"], get_product_price(code)) for code, item in DIAMOND_PRODUCTS.items()
     ]
     for code, name, price in products:
         quantity = get_product_stock(code)
@@ -684,6 +752,8 @@ async def admin_help(message: Message):
         "/stock CODE NUMBER — Stock အတိအကျသတ်မှတ်ရန်\n"
         "/stock d202 10 — Diamond 202 ကို 10 ခုထားရန်\n"
         "/stock d202 0 — Diamond 202 ကို Unavailable လုပ်ရန်\n"
+        "/price CODE AMOUNT — ဈေးနှုန်းအတိအကျသတ်မှတ်ရန်\n"
+        "/price d202 10500 — Diamond 202 ဈေးနှုန်းပြောင်းရန်\n"
         "/saveemoji LABEL — Emoji ID သိမ်းရန်\n"
         "/emojis — သိမ်းထားသော emoji IDs ကြည့်ရန်\n"
         "/approve ORDER_ID — Order approveရန်\n"
