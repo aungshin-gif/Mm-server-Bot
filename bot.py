@@ -137,7 +137,7 @@ def main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Products  •  MLBB Diamond Store", callback_data="menu_products", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["products"])],
         [InlineKeyboardButton(text="Region Check  •  ID / Zone", callback_data="menu_region", style="success", icon_custom_emoji_id=CUSTOM_EMOJIS["region"])],
-        [InlineKeyboardButton(text="Support  •  Contact Admin", callback_data="menu_support", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
+        [InlineKeyboardButton(text="Support", url="https://t.me/angsthtun", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
         [InlineKeyboardButton(text="Feedback  •  Send Message", callback_data="menu_feedback", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["feedback"])],
     ])
 
@@ -222,7 +222,7 @@ def product_keyboard():
     rows.append([InlineKeyboardButton(
         text=weekly_label,
         callback_data="buy:weekly" if weekly_stock > 0 else "unavailable",
-        style="danger",
+        style="success" if weekly_stock > 0 else "danger",
         icon_custom_emoji_id=CUSTOM_EMOJIS["weekly_pass"],
     )])
     for code, item in DIAMOND_PRODUCTS.items():
@@ -231,10 +231,9 @@ def product_keyboard():
         rows.append([InlineKeyboardButton(
             text=label,
             callback_data=f"buy:{code}" if stock > 0 else "unavailable",
-            style="danger" if stock > 0 else "primary",
+            style="success" if stock > 0 else "danger",
             icon_custom_emoji_id=CUSTOM_EMOJIS["diamond"],
         )])
-    rows.append([InlineKeyboardButton(text="Contact Admin", url=f"https://t.me/{CONTACT_ADMIN_USERNAME}", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])])
     rows.append([InlineKeyboardButton(text="Main Menu", callback_data="back_menu", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
