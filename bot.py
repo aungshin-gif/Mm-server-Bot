@@ -1,4 +1,3 @@
-
 import asyncio
 import logging
 import os
@@ -54,6 +53,7 @@ CUSTOM_EMOJIS = {
     "diamond": "5427168083074628963",
     "kbzpay": "6217312653879024991",
     "welcome": "5409109841538994759",
+    "rainbow": "5456140674028019486",
     "order_info": "5397916757333654639",
     "amount": "5402186569006210455",
     "region_result": "5206607081334906820",
@@ -139,7 +139,6 @@ def main_keyboard():
         [InlineKeyboardButton(text="Region Check  •  ID / Zone", callback_data="menu_region", style="success", icon_custom_emoji_id=CUSTOM_EMOJIS["region"])],
         [InlineKeyboardButton(text="Support  •  Contact Admin", callback_data="menu_support", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
         [InlineKeyboardButton(text="Feedback  •  Send Message", callback_data="menu_feedback", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["feedback"])],
-        [InlineKeyboardButton(text="Contact Admin  •  @angsthtun", url=f"https://t.me/{CONTACT_ADMIN_USERNAME}", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
     ])
 
 
@@ -158,41 +157,84 @@ def order_admin_keyboard(order_id: int):
     ])
 
 
-def is_product_available(code: str) -> bool:
+def get_product_stock(code: str) -> int:
     with db() as con:
         row = con.execute("SELECT available FROM product_stock WHERE code = ?", (code,)).fetchone()
-    return bool(row and row["available"])
+    return max(0, int(row["available"])) if row else 0
 
 
-def set_product_available(code: str, available: bool):
+def is_product_available(code: str) -> bool:
+    return get_product_stock(code) > 0
+
+
+def set_product_stock(code: str, quantity: int):
+    quantity = max(0, int(quantity))
     now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     with db() as con:
         con.execute(
             "INSERT INTO product_stock(code, available, updated_at) VALUES (?, ?, ?) "
             "ON CONFLICT(code) DO UPDATE SET available=excluded.available, updated_at=excluded.updated_at",
-            (code, 1 if available else 0, now),
+            (code, quantity, now),
         )
+
+
+def change_product_stock(code: str, delta: int) -> int:
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    with db() as con:
+        row = con.execute("SELECT available FROM product_stock WHERE code = ?", (code,)).fetchone()
+        current = int(row["available"]) if row else 0
+        new_value = max(0, current + int(delta))
+        con.execute(
+            "INSERT INTO product_stock(code, available, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(code) DO UPDATE SET available=excluded.available, updated_at=excluded.updated_at",
+            (code, new_value, now),
+        )
+        return new_value
+
+
+def decrement_product_stock(code: str) -> bool:
+    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    with db() as con:
+        cursor = con.execute(
+            "UPDATE product_stock SET available = available - 1, updated_at = ? "
+            "WHERE code = ? AND available > 0",
+            (now, code),
+        )
+        return cursor.rowcount == 1
+
+
+def product_code_from_name(product_name: str):
+    if product_name == PRODUCT_NAME:
+        return "weekly"
+    return next((code for code, item in DIAMOND_PRODUCTS.items() if item["name"] == product_name), None)
+
+
+def restore_stock_for_order(order):
+    code = product_code_from_name(order["product"])
+    if code:
+        change_product_stock(code, 1)
 
 
 def product_keyboard():
     rows = []
-    weekly_label = "Weekly Pass • 6,000 Ks • Stock: 1" if is_product_available("weekly") else "Weekly Pass • Unavailable"
+    weekly_stock = get_product_stock("weekly")
+    weekly_label = f"Weekly Pass • 6,000 Ks • Stock: {weekly_stock}" if weekly_stock > 0 else "Weekly Pass • Unavailable"
     rows.append([InlineKeyboardButton(
         text=weekly_label,
-        callback_data="buy:weekly" if is_product_available("weekly") else "unavailable",
+        callback_data="buy:weekly" if weekly_stock > 0 else "unavailable",
         style="danger",
         icon_custom_emoji_id=CUSTOM_EMOJIS["weekly_pass"],
     )])
     for code, item in DIAMOND_PRODUCTS.items():
-        available = is_product_available(code)
-        label = f"Diamond {item['diamonds']} • {item['price']:,} Ks" if available else f"Diamond {item['diamonds']} • Unavailable"
+        stock = get_product_stock(code)
+        label = f"Diamond {item['diamonds']} • {item['price']:,} Ks • Stock: {stock}" if stock > 0 else f"Diamond {item['diamonds']} • Unavailable"
         rows.append([InlineKeyboardButton(
             text=label,
-            callback_data=f"buy:{code}" if available else "unavailable",
-            style="danger" if available else "primary",
+            callback_data=f"buy:{code}" if stock > 0 else "unavailable",
+            style="danger" if stock > 0 else "primary",
             icon_custom_emoji_id=CUSTOM_EMOJIS["diamond"],
         )])
-    rows.append([InlineKeyboardButton(text="Contact Admin  •  @angsthtun", url=f"https://t.me/{CONTACT_ADMIN_USERNAME}", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])])
+    rows.append([InlineKeyboardButton(text="Contact Admin", url=f"https://t.me/{CONTACT_ADMIN_USERNAME}", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])])
     rows.append([InlineKeyboardButton(text="Main Menu", callback_data="back_menu", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -266,12 +308,14 @@ def custom_lines(lines):
 @router.message(Command("start"))
 async def start(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer(
+    welcome_text, welcome_entities = custom_prefix(
+        "rainbow",
         "Gamepay Hub ရဲ့ အပျင်းပြေ Bot မှ ကြိုဆိုပါတယ်။\n\n"
         "ဒီ Bot မှာ MLBB Myanmar Server diamond နှင့် Region စစ်ဆေးခြင်း service ရရှိနိုင်ပါတယ်။\n\n"
         "အောက်က Start ခလုတ်ကိုနှိပ်ပြီး ဝန်ဆောင်မှုများကို ရွေးချယ်ပါ။",
-        reply_markup=welcome_keyboard(),
+        "",
     )
+    await message.answer(welcome_text, entities=welcome_entities, reply_markup=welcome_keyboard(), parse_mode=None)
 
 
 @router.callback_query(F.data == "go_start")
@@ -306,12 +350,14 @@ async def products(message: Message):
         ("catalogue", "GAMEPAY HUB CATALOGUE", ""),
         ("products", "ဝယ်ယူလိုသော product ကို အောက်က card မှာရွေးပါ။", ""),
         ("fast_delivery", "Fast delivery", ""),
-        ("stock", "Stock ရှိပါသည်", ""),
+        ("stock", "Stock quantity ကို catalogue card မှာကြည့်နိုင်ပါတယ်။", ""),
         ("secure_checkout", "Secure checkout", ""),
-        ("weekly_pass", "Weekly Pass • 6,000 Ks", ""),
     ]
-    for item in DIAMOND_PRODUCTS.values():
-        product_lines.append(("diamond", f"Diamond {item['diamonds']} • {item['price']:,} Ks", ""))
+    weekly_stock = get_product_stock("weekly")
+    product_lines.append(("weekly_pass", f"Weekly Pass • 6,000 Ks • Stock: {weekly_stock}" if weekly_stock > 0 else "Weekly Pass • Unavailable", ""))
+    for code, item in DIAMOND_PRODUCTS.items():
+        stock = get_product_stock(code)
+        product_lines.append(("diamond", f"Diamond {item['diamonds']} • {item['price']:,} Ks • Stock: {stock}" if stock > 0 else f"Diamond {item['diamonds']} • Unavailable", ""))
     product_text, product_entities = custom_lines(product_lines)
     await message.answer(product_text, entities=product_entities, reply_markup=product_keyboard(), parse_mode=None)
 
@@ -397,6 +443,11 @@ async def receive_payment(message: Message, state: FSMContext, bot: Bot):
         await state.clear()
         await message.answer("Order session မတွေ့တော့ပါ။ /start နဲ့ ပြန်စပါ။")
         return
+    product_code = data.get("product_code", "weekly")
+    if not decrement_product_stock(product_code):
+        await state.clear()
+        await message.answer("ဒီ product stock ကုန်သွားပါပြီ။ Unavailable ဖြစ်နေပါတယ်။", reply_markup=main_keyboard())
+        return
     photo_id = message.photo[-1].file_id
     now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
     with db() as con:
@@ -444,11 +495,12 @@ async def menu_region(callback: CallbackQuery, state: FSMContext):
 @router.message(Command("region"))
 async def region_start(message: Message, state: FSMContext):
     await state.set_state(UserFlow.waiting_region_input)
-    await message.answer(
-        "MLBB User ID နဲ့ Server/Zone ID ကို space ခြားပြီးပို့ပါ။\n"
-        "ဥပမာ: 651256402 8592",
-        reply_markup=back_keyboard(),
+    prompt_text, prompt_entities = custom_prefix(
+        "region",
+        "MLBB User ID နဲ့ Server/Zone ID ကို space ခြားပြီးပို့ပါ။\nဥပမာ: 651256402 8592",
+        "",
     )
+    await message.answer(prompt_text, entities=prompt_entities, reply_markup=back_keyboard(), parse_mode=None)
 
 
 @router.message(UserFlow.waiting_region_input)
@@ -535,39 +587,109 @@ async def receive_feedback(message: Message, state: FSMContext, bot: Bot):
     await message.answer("✅ Feedback ကို admin ဆီ ပို့ပြီးပါပြီ။ ကျေးဇူးတင်ပါတယ်။", reply_markup=main_keyboard())
 
 
+def admin_panel_keyboard():
+    rows = []
+    products = [("weekly", PRODUCT_NAME)] + [(code, item["name"]) for code, item in DIAMOND_PRODUCTS.items()]
+    for code, name in products:
+        stock = get_product_stock(code)
+        rows.append([
+            InlineKeyboardButton(text=f"{name} • Stock: {stock}", callback_data=f"admin:noop:{code}", style="primary"),
+        ])
+        rows.append([
+            InlineKeyboardButton(text="−1", callback_data=f"admin:dec:{code}", style="danger"),
+            InlineKeyboardButton(text="+1", callback_data=f"admin:inc:{code}", style="success"),
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.message(Command("admin"))
+async def admin_panel(message: Message):
+    if not admin_only(message.from_user.id):
+        return
+    await message.answer(
+        "ADMIN STOCK PANEL\n\n"
+        "−1 / +1 နဲ့ stock quantity ပြောင်းပါ။\n"
+        "အတိအကျထည့်ရန် /stock CODE NUMBER ကိုသုံးပါ။\n\n"
+        "Commands list: /adminhelp",
+        reply_markup=admin_panel_keyboard(),
+    )
+
+
+@router.callback_query(F.data.startswith("admin:"))
+async def admin_stock_callback(callback: CallbackQuery):
+    if not admin_only(callback.from_user.id):
+        await callback.answer("Admin only", show_alert=True)
+        return
+    _, action, code = callback.data.split(":", 2)
+    valid_codes = {"weekly", *DIAMOND_PRODUCTS.keys()}
+    if code not in valid_codes:
+        await callback.answer("Product code မမှန်ပါ။", show_alert=True)
+        return
+    if action == "inc":
+        change_product_stock(code, 1)
+    elif action == "dec":
+        change_product_stock(code, -1)
+    await callback.message.edit_text(
+        "ADMIN STOCK PANEL\n\n"
+        "−1 / +1 နဲ့ stock quantity ပြောင်းပါ။\n"
+        "အတိအကျထည့်ရန် /stock CODE NUMBER ကိုသုံးပါ။\n\n"
+        "Commands list: /adminhelp",
+        reply_markup=admin_panel_keyboard(),
+    )
+    await callback.answer("Stock updated")
+
+
+@router.callback_query(F.data.startswith("admin:noop:"))
+async def admin_noop_callback(callback: CallbackQuery):
+    await callback.answer()
+
+
 @router.message(Command("stock"))
 async def stock_command(message: Message):
     if not admin_only(message.from_user.id):
         return
     args = (message.text or "").split()
-    if len(args) != 3 or args[1] not in {"weekly", *DIAMOND_PRODUCTS.keys()} or args[2].lower() not in {"on", "off"}:
-        await message.answer(
-            "အသုံးပြုပုံ:\n"
-            "/stock weekly on\n"
-            "/stock d202 off\n\n"
-            "Codes: weekly, d202, d404, d606, d829, d2157"
-        )
+    valid_codes = {"weekly", *DIAMOND_PRODUCTS.keys()}
+    if len(args) != 3 or args[1] not in valid_codes or not args[2].isdigit():
+        await message.answer("အသုံးပြုပုံ: /stock CODE NUMBER\nဥပမာ: /stock d202 10")
         return
-    code = args[1]
-    available = args[2].lower() == "on"
-    set_product_available(code, available)
+    code, quantity = args[1], int(args[2])
+    set_product_stock(code, quantity)
     label = PRODUCT_NAME if code == "weekly" else DIAMOND_PRODUCTS[code]["name"]
-    status = "Available" if available else "Unavailable"
-    await message.answer(f"{label}: {status}")
+    await message.answer(f"{label}: Stock {quantity}")
 
 
 @router.message(Command("stocks"))
 async def stocks_command(message: Message):
     if not admin_only(message.from_user.id):
         return
-    lines = ["Current stock status", ""]
+    lines = ["CURRENT STOCKS", ""]
     products = [("weekly", PRODUCT_NAME, PRODUCT_PRICE)] + [
         (code, item["name"], item["price"]) for code, item in DIAMOND_PRODUCTS.items()
     ]
     for code, name, price in products:
-        status = "Available" if is_product_available(code) else "Unavailable"
-        lines.append(f"{code} — {name} — {price:,} Ks — {status}")
+        quantity = get_product_stock(code)
+        status = "Available" if quantity > 0 else "Unavailable"
+        lines.append(f"{code} — {name} — {price:,} Ks — Stock: {quantity} — {status}")
     await message.answer("\n".join(lines))
+
+
+@router.message(Command("adminhelp"))
+async def admin_help(message: Message):
+    if not admin_only(message.from_user.id):
+        return
+    await message.answer(
+        "ADMIN COMMANDS\n\n"
+        "/admin — Stock panel ဖွင့်ရန်\n"
+        "/stocks — Stock အားလုံးကြည့်ရန်\n"
+        "/stock CODE NUMBER — Stock အတိအကျသတ်မှတ်ရန်\n"
+        "/stock d202 10 — Diamond 202 ကို 10 ခုထားရန်\n"
+        "/stock d202 0 — Diamond 202 ကို Unavailable လုပ်ရန်\n"
+        "/saveemoji LABEL — Emoji ID သိမ်းရန်\n"
+        "/emojis — သိမ်းထားသော emoji IDs ကြည့်ရန်\n"
+        "/approve ORDER_ID — Order approveရန်\n"
+        "/reject ORDER_ID — Order rejectရန်"
+    )
 
 
 @router.message(Command("saveemoji"))
@@ -632,12 +754,13 @@ async def reject_order_button(callback: CallbackQuery, bot: Bot):
     order_id = int(callback.data.split(":", 1)[1])
     with db() as con:
         order = con.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-        if order:
+        if order and order["status"] not in {"rejected", "approved"}:
             con.execute("UPDATE orders SET status='rejected' WHERE id=?", (order_id,))
+            restore_stock_for_order(order)
     if not order:
         await callback.answer("Order မတွေ့ပါ", show_alert=True)
         return
-    await bot.send_message(order["user_id"], f"❌ Order #{order_id} ကို reject လုပ်ထားပါတယ်။\\nPayment အချက်အလက် မရှင်းလင်းပါက Support ကို ဆက်သွယ်ပါ။")
+    await bot.send_message(order["user_id"], f"Order #{order_id} ကို reject လုပ်ထားပါတယ်။\nPayment အချက်အလက် မရှင်းလင်းပါက Support ကို ဆက်သွယ်ပါ။")
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.answer("Rejected")
 
@@ -673,12 +796,13 @@ async def reject_order(message: Message, bot: Bot):
     order_id = int(args[1])
     with db() as con:
         order = con.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
-        if order:
+        if order and order["status"] not in {"rejected", "approved"}:
             con.execute("UPDATE orders SET status='rejected' WHERE id=?", (order_id,))
+            restore_stock_for_order(order)
     if not order:
         await message.answer("Order မတွေ့ပါ။")
         return
-    await bot.send_message(order["user_id"], f"❌ Order #{order_id} ကို reject လုပ်ထားပါတယ်။ Payment အချက်အလက် မရှင်းလင်းပါက Support ကို ဆက်သွယ်ပါ။")
+    await bot.send_message(order["user_id"], f"Order #{order_id} ကို reject လုပ်ထားပါတယ်။ Payment အချက်အလက် မရှင်းလင်းပါက Support ကို ဆက်သွယ်ပါ။")
     await message.answer(f"Order #{order_id} rejected ပါပြီ။")
 
 
@@ -731,4 +855,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
