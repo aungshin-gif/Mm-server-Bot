@@ -1,4 +1,5 @@
 
+
 import asyncio
 import logging
 import os
@@ -114,10 +115,10 @@ def welcome_keyboard():
 
 def main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Products", callback_data="menu_products", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["products"])],
-        [InlineKeyboardButton(text="Region Check", callback_data="menu_region", style="success", icon_custom_emoji_id=CUSTOM_EMOJIS["region"])],
-        [InlineKeyboardButton(text="Support", callback_data="menu_support", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
-        [InlineKeyboardButton(text="Feedback", callback_data="menu_feedback", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["feedback"])],
+        [InlineKeyboardButton(text="Products  •  MLBB Diamond Store", callback_data="menu_products", style="danger", icon_custom_emoji_id=CUSTOM_EMOJIS["products"])],
+        [InlineKeyboardButton(text="Region Check  •  ID / Zone", callback_data="menu_region", style="success", icon_custom_emoji_id=CUSTOM_EMOJIS["region"])],
+        [InlineKeyboardButton(text="Support  •  Contact Admin", callback_data="menu_support", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["welcome"])],
+        [InlineKeyboardButton(text="Feedback  •  Send Message", callback_data="menu_feedback", style="primary", icon_custom_emoji_id=CUSTOM_EMOJIS["feedback"])],
     ])
 
 
@@ -212,27 +213,22 @@ def custom_lines(lines):
 @router.message(Command("start"))
 async def start(message: Message, state: FSMContext):
     await state.clear()
-    welcome_text, welcome_entities = custom_prefix(
-        "welcome",
-        "<b>Gamepay Hub ရဲ့ အပျင်းပြေ Bot မှ ကြိုဆိုပါတယ်။</b>\n\n"
+    await message.answer(
+        "Gamepay Hub ရဲ့ အပျင်းပြေ Bot မှ ကြိုဆိုပါတယ်။\n\n"
         "ဒီ Bot မှာ MLBB Myanmar Server diamond နှင့် Region စစ်ဆေးခြင်း service ရရှိနိုင်ပါတယ်။\n\n"
-        "အောက်က card menu မှာ လိုချင်တဲ့ service ကိုရွေးပါ။",
-        "🎮",
+        "အောက်က Start ခလုတ်ကိုနှိပ်ပြီး ဝန်ဆောင်မှုများကို ရွေးချယ်ပါ။",
+        reply_markup=welcome_keyboard(),
     )
-    await message.answer(welcome_text, entities=welcome_entities, reply_markup=welcome_keyboard())
 
 
 @router.callback_query(F.data == "go_start")
 async def go_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
-    menu_text, menu_entities = custom_lines([
-        ("products", "Products", ""),
-        ("region", "Region Check", ""),
-        ("welcome", "Support", ""),
-        ("feedback", "Feedback", ""),
-    ])
-    await callback.message.answer(menu_text, entities=menu_entities, reply_markup=main_keyboard(), parse_mode=None)
+    await callback.message.answer(
+        "GAMEPAY HUB MAIN MENU\n\nဝန်ဆောင်မှုတစ်ခုကို အောက်က ခလုတ်များမှ ရွေးချယ်ပါ။",
+        reply_markup=main_keyboard(),
+    )
 
 
 @router.callback_query(F.data == "menu_products")
@@ -244,8 +240,10 @@ async def menu_products(callback: CallbackQuery):
 @router.callback_query(F.data == "back_menu")
 async def back_menu(callback: CallbackQuery):
     await callback.answer()
-    menu_text, menu_entities = custom_prefix("welcome", "Main Menu", "🎮")
-    await callback.message.answer(menu_text, entities=menu_entities, reply_markup=main_keyboard(), parse_mode=None)
+    await callback.message.answer(
+        "GAMEPAY HUB MAIN MENU\n\nဝန်ဆောင်မှုတစ်ခုကို အောက်က ခလုတ်များမှ ရွေးချယ်ပါ။",
+        reply_markup=main_keyboard(),
+    )
 
 
 @router.message(F.text == "Products")
@@ -370,13 +368,11 @@ async def menu_region(callback: CallbackQuery, state: FSMContext):
 @router.message(Command("region"))
 async def region_start(message: Message, state: FSMContext):
     await state.set_state(UserFlow.waiting_region_input)
-    region_text, region_entities = custom_prefix(
-        "region",
+    await message.answer(
         "MLBB User ID နဲ့ Server/Zone ID ကို space ခြားပြီးပို့ပါ။\n"
         "ဥပမာ: 651256402 8592",
-        "🌍",
+        reply_markup=back_keyboard(),
     )
-    await message.answer(region_text, entities=region_entities, reply_markup=back_keyboard())
 
 
 @router.message(UserFlow.waiting_region_input)
